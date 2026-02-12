@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Half-Hour Log</title>
+  <style>
+    :root {
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      color: #111827;
+      background: #f3f4f6;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 1rem;
+    }
+
+    .app {
+      width: min(840px, 100%);
+      background: white;
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+      padding: 1rem;
+    }
+
+    h1 { margin: 0 0 0.35rem; font-size: 1.35rem; }
+    .muted { color: #4b5563; margin: 0 0 1rem; }
+
+    .card {
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 0.85rem;
+      margin-bottom: 1rem;
+      background: #fcfcff;
+    }
+
+    .row { display: flex; gap: 0.55rem; flex-wrap: wrap; align-items: center; }
+
+    input, button, select {
+      font: inherit;
+      border-radius: 10px;
+      border: 1px solid #d1d5db;
+      padding: 0.6rem 0.75rem;
+    }
+
+    input[type="text"] { flex: 1 1 320px; }
+
+    button {
+      background: #111827;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+
+    button.secondary { background: #e5e7eb; color: #111827; }
+    button.quick { background: #2563eb; }
+
+    .slot {
+      font-weight: 700;
+      color: #0f766e;
+      background: #ecfeff;
+      border: 1px solid #99f6e4;
+      display: inline-block;
+      padding: 0.3rem 0.55rem;
+      border-radius: 999px;
+      margin-bottom: 0.45rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+
+    th, td {
+      text-align: left;
+      border-bottom: 1px solid #e5e7eb;
+      padding: 0.45rem 0.25rem;
+      vertical-align: top;
+    }
+
+    td small { color: #6b7280; display: block; }
+
+    .tag {
+      padding: 0.2rem 0.45rem;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      color: #1f2937;
+      background: #e0f2fe;
+      border: 1px solid #bae6fd;
+    }
+
+    .empty {
+      text-align: center;
+      color: #6b7280;
+      padding: 1rem 0;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 0.5rem;
+    }
+
+    .stat {
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 0.55rem;
+      background: #f9fafb;
+    }
+
+    .stat b { display: block; font-size: 1.1rem; }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <h1>Half-Hour Activity Log</h1>
+    <p class="muted">Log what you did every 30 minutes in under 10 seconds.</p>
+
+    <section class="card">
+      <div id="currentSlot" class="slot"></div>
+      <div class="row" style="margin-bottom: 0.5rem;">
+        <input id="activityInput" type="text" placeholder="What did you do in this half hour?" maxlength="140" />
+        <select id="tagSelect">
+          <option value="Work">Work</option>
+          <option value="Learning">Learning</option>
+          <option value="Admin">Admin</option>
+          <option value="Break">Break</option>
+          <option value="Personal">Personal</option>
+        </select>
+        <button id="saveBtn">Save</button>
+      </div>
+      <div class="row">
+        <button class="quick" data-text="Focused work">Focused work</button>
+        <button class="quick" data-text="Meeting">Meeting</button>
+        <button class="quick" data-text="Planning">Planning</button>
+        <button class="quick" data-text="Break">Break</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="stats" id="stats"></div>
+    </section>
+
+    <section class="card">
+      <div class="row" style="justify-content: space-between; margin-bottom: 0.5rem;">
+        <h2 style="margin: 0; font-size: 1rem;">Today</h2>
+        <button class="secondary" id="clearBtn">Clear today</button>
+      </div>
+      <table>
+        <thead>
+          <tr><th>Time Slot</th><th>Activity</th><th>Tag</th><th></th></tr>
+        </thead>
+        <tbody id="logBody"></tbody>
+      </table>
+      <div class="empty" id="emptyState">No logs yet for today.</div>
+    </section>
+  </main>
+
+  <script>
+    const KEY = 'half-hour-log-v1';
+    const currentSlotEl = document.getElementById('currentSlot');
+    const inputEl = document.getElementById('activityInput');
+    const tagEl = document.getElementById('tagSelect');
+    const saveBtn = document.getElementById('saveBtn');
+    const logBody = document.getElementById('logBody');
+    const clearBtn = document.getElementById('clearBtn');
+    const emptyState = document.getElementById('emptyState');
+    const statsEl = document.getElementById('stats');
+
+    function todayKey(date = new Date()) {
+      return date.toISOString().slice(0, 10);
+    }
+
+    function slotLabel(date = new Date()) {
+      const d = new Date(date);
+      const mins = d.getMinutes();
+      d.setMinutes(mins < 30 ? 0 : 30, 0, 0);
+      const next = new Date(d.getTime() + 30 * 60 * 1000);
+      return `${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${next.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    }
+
+    function loadData() {
+      try {
+        return JSON.parse(localStorage.getItem(KEY)) || {};
+      } catch {
+        return {};
+      }
+    }
+
+    function saveData(data) {
+      localStorage.setItem(KEY, JSON.stringify(data));
+    }
+
+    function upsertLog(activity) {
+      const day = todayKey();
+      const data = loadData();
+      const logs = data[day] || [];
+      const slot = slotLabel();
+      const index = logs.findIndex((x) => x.slot === slot);
+      const entry = {
+        slot,
+        activity: activity.trim(),
+        tag: tagEl.value,
+        updatedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+
+      if (index >= 0) {
+        logs[index] = entry;
+      } else {
+        logs.push(entry);
+      }
+
+      data[day] = logs.sort((a, b) => a.slot.localeCompare(b.slot));
+      saveData(data);
+      render();
+    }
+
+    function deleteBySlot(slot) {
+      const day = todayKey();
+      const data = loadData();
+      data[day] = (data[day] || []).filter((x) => x.slot !== slot);
+      saveData(data);
+      render();
+    }
+
+    function renderStats(logs) {
+      const total = logs.length;
+      const productive = logs.filter((x) => ['Work', 'Learning'].includes(x.tag)).length;
+      const breakSlots = logs.filter((x) => x.tag === 'Break').length;
+      const hoursLogged = (total * 0.5).toFixed(1);
+
+      statsEl.innerHTML = `
+        <div class="stat"><small>Slots logged</small><b>${total}</b></div>
+        <div class="stat"><small>Hours tracked</small><b>${hoursLogged}</b></div>
+        <div class="stat"><small>Productive slots</small><b>${productive}</b></div>
+        <div class="stat"><small>Break slots</small><b>${breakSlots}</b></div>
+      `;
+    }
+
+    function render() {
+      currentSlotEl.textContent = `Current slot: ${slotLabel()}`;
+      const data = loadData();
+      const logs = data[todayKey()] || [];
+
+      logBody.innerHTML = '';
+      for (const log of logs) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${log.slot}<small>updated ${log.updatedAt}</small></td>
+          <td>${log.activity}</td>
+          <td><span class="tag">${log.tag}</span></td>
+          <td><button class="secondary" data-delete="${log.slot}">Delete</button></td>
+        `;
+        logBody.appendChild(tr);
+      }
+
+      emptyState.style.display = logs.length ? 'none' : 'block';
+      renderStats(logs);
+    }
+
+    saveBtn.addEventListener('click', () => {
+      if (!inputEl.value.trim()) return;
+      upsertLog(inputEl.value);
+      inputEl.value = '';
+      inputEl.focus();
+    });
+
+    inputEl.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        saveBtn.click();
+      }
+    });
+
+    document.querySelectorAll('.quick').forEach((button) => {
+      button.addEventListener('click', () => {
+        inputEl.value = button.dataset.text;
+        saveBtn.click();
+      });
+    });
+
+    logBody.addEventListener('click', (event) => {
+      const target = event.target;
+      if (target.matches('button[data-delete]')) {
+        deleteBySlot(target.dataset.delete);
+      }
+    });
+
+    clearBtn.addEventListener('click', () => {
+      const data = loadData();
+      delete data[todayKey()];
+      saveData(data);
+      render();
+    });
+
+    setInterval(render, 30 * 1000);
+    render();
+    inputEl.focus();
+  </script>
+</body>
+</html>
